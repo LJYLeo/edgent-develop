@@ -163,7 +163,7 @@ public class WaterEdgeDetector {
             } else if (tuple.get("rainfall") != null) {
                 return 2;
             } else {
-                return -1;
+                return -2;
             }
         });
 
