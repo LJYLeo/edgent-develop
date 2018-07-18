@@ -10,6 +10,7 @@ public class Test {
         map.put("time", 1111111L);
         map.put("number", null);
         System.out.println(map.get("time") + "," + map.get("number"));
+
     }
 
     private static void readData(Integer index) {
