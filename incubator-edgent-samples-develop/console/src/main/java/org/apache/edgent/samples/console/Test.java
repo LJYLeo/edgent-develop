@@ -13,6 +13,7 @@ public class Test {
     }
 
     private static void readData(Integer index) {
+
         index += 1;
         System.out.println(index);
     }
