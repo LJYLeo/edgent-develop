@@ -7,7 +7,7 @@ public class Test {
 
     public static void main(String[] args) {
         Map<String, Object> map = new HashMap<>();
-        map.put("time", 111111L);
+        map.put("time", 1111111L);
         map.put("number", null);
         System.out.println(map.get("time") + "," + map.get("number"));
     }
