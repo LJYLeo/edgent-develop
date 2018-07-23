@@ -114,6 +114,20 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- IO工具类 -->
+    <dependency>
+      <groupId>commons-io</groupId>
+      <artifactId>commons-io</artifactId>
+      <version>2.5</version>
+    </dependency>
+
+    <!-- 数据库连接 -->
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.11</version>
+    </dependency>
+
     <!-- Other common sample dependencies -->
     <dependency>
       <groupId>${edgent.runtime.groupId}</groupId>

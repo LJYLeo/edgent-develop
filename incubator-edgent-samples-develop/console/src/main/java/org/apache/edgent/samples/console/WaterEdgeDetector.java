@@ -10,6 +10,11 @@ import org.apache.edgent.topology.Topology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -42,11 +47,35 @@ public class WaterEdgeDetector {
     static List<Map<String, Object>> evaporationDataList = new ArrayList<>();
     static List<Map<String, Object>> rainfallDataList = new ArrayList<>();
 
+    static Connection con;
+
+    //驱动程序名
+    static final String driver = "com.mysql.jdbc.Driver";
+    //URL指向要访问的数据库名mydata
+    static final String url = "jdbc:mysql://localhost:3306/edgent";
+    //MySQL配置时的用户名
+    static final String user = "root";
+    //MySQL配置时的密码
+    static final String password = "LJY958769";
+
+
+    static {
+
+        try {
+            //加载驱动程序
+            Class.forName(driver);
+            con = DriverManager.getConnection(url, user, password);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+
     public static void main(String[] args) throws Exception {
 
-        loadData(levelDataList);
-        loadData(evaporationDataList);
-        loadData(rainfallDataList);
+        loadData(levelDataList, "level");
+        loadData(evaporationDataList, "evaporation");
+        loadData(rainfallDataList, "rainfall");
 
         // 开启控制台并打印访问路径
         DirectProvider dp = new DevelopmentProvider();
@@ -143,19 +172,58 @@ public class WaterEdgeDetector {
             JsonElement tempElement = r.get("level");
             if (tempElement != null) {
                 String level = tempElement.getAsString();
-                return level != null && checkIsValid(level.split(",")[1]);
+                System.out.println("level : " + level);
+                boolean isOk = level != null && checkIsValid(level.split(",")[1]);
+                if (isOk) {
+                    try {
+                        PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?)");
+                        pstatement.setString(1, level.split(",")[0]);
+                        pstatement.setFloat(2, Float.parseFloat(level.split(",")[1]));
+                        pstatement.executeUpdate();
+                        pstatement.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                return isOk;
             }
 
             JsonElement acidElement = r.get("evaporation");
             if (acidElement != null) {
                 String evaporation = acidElement.getAsString();
-                return evaporation != null && checkIsValid(evaporation.split(",")[1]);
+                System.out.println("evaporation : " + evaporation);
+                boolean isOk = evaporation != null && checkIsValid(evaporation.split(",")[1]);
+                if (isOk) {
+                    try {
+                        PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?)");
+                        pstatement.setString(1, evaporation.split(",")[0]);
+                        pstatement.setFloat(2, Float.parseFloat(evaporation.split(",")[1]));
+                        pstatement.executeUpdate();
+                        pstatement.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                return isOk;
             }
 
             JsonElement ecoliElement = r.get("rainfall");
             if (ecoliElement != null) {
                 String rainfall = ecoliElement.getAsString();
-                return rainfall != null && checkIsValid(rainfall.split(",")[1]);
+                System.out.println("rainfall : " + rainfall);
+                boolean isOk = rainfall != null && checkIsValid(rainfall.split(",")[1]);
+                if (isOk) {
+                    try {
+                        PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
+                        pstatement.setString(1, rainfall.split(",")[0]);
+                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",")[1]));
+                        pstatement.executeUpdate();
+                        pstatement.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                return isOk;
             }
 
             return false;
@@ -191,29 +259,54 @@ public class WaterEdgeDetector {
         return wellName + " alert, " + alertType + " value is " + alertObj.get(alertType).getAsString();
     }
 
-    private static void loadData(List<Map<String, Object>> dataList) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("time", 1281204000000L);
-        map.put("number", 519.07F);
-        dataList.add(map);
-        map = new HashMap<>();
-        map.put("time", 1309824000000L);
-        map.put("number", 516.39F);
-        dataList.add(map);
-        map = new HashMap<>();
-        map.put("time", 1309932000000L);
-        map.put("number", null);
-        dataList.add(map);
+    private static void loadData(List<Map<String, Object>> dataList, String type) {
+
+        String filePath = "";
+        String seperator = "\t";
+        int index = 0;
+        List<String> timeList;
+        List<String> valueList;
+        if ("level".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝ZQ.csv";
+            index = 2;
+            seperator = ",";
+        } else if ("evaporation".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝ZQ.csv";
+            index = 3;
+            seperator = ",";
+        } else if ("rainfall".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝雨量.csv";
+            index = 2;
+            seperator = "\t";
+        }
+
+        timeList = Utils.readFile(filePath, seperator, 1, false);
+        valueList = Utils.readFile(filePath, seperator, index, false);
+
+        for (int i = 0; i < timeList.size(); i++) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("time", timeList.get(i));
+            map.put("number", valueList.get(i));
+            dataList.add(map);
+
+        }
+
     }
 
     private static Map<String, Object> readData(List<Map<String, Object>> dataList, Map<String, Integer> indexMap) {
-        int index = indexMap.get("index");
-        indexMap.put("index", index + 1);
-        return dataList.get(index % dataList.size());
+        long currentTime = System.currentTimeMillis();
+        if (currentTime / 1000 % 60 == 0 || new Random().nextFloat() <= 0.005) {
+            int index = indexMap.get("index");
+            Map<String, Object> current = dataList.get(index % dataList.size());
+            current.put("time", Utils.parseTimeToString(currentTime));
+            indexMap.put("index", index + 1);
+            return current;
+        }
+        return null;
     }
 
     private static boolean checkIsValid(String value) {
-        return value != null && !"null".equals(value);
+        return Utils.isNumber(value);
     }
 
     private static String getTimestampFromTStream(TStream<JsonObject> tStream, String key) {
