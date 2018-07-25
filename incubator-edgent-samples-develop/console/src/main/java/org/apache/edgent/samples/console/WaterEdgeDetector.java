@@ -41,11 +41,15 @@ public class WaterEdgeDetector {
     // static String RAINFALL_ALERT_TAG = "rainfall out of range";
     static String RAINFALL_ALERT_TAG = "rainfall is valid";
 
+    static String FLOW_ALERT_TAG = "flow is valid";
+
     private static final Logger logger = LoggerFactory.getLogger(WaterEdgeDetector.class);
 
     static List<Map<String, Object>> levelDataList = new ArrayList<>();
     static List<Map<String, Object>> evaporationDataList = new ArrayList<>();
     static List<Map<String, Object>> rainfallDataList = new ArrayList<>();
+    static List<Map<String, Object>> rainfallDataList1 = new ArrayList<>();
+    static List<Map<String, Object>> flowDataList = new ArrayList<>();
 
     static Connection con;
 
@@ -76,6 +80,8 @@ public class WaterEdgeDetector {
         loadData(levelDataList, "level");
         loadData(evaporationDataList, "evaporation");
         loadData(rainfallDataList, "rainfall");
+        loadData1(rainfallDataList1, "rainfall");
+        loadData2(flowDataList, "flow");
 
         // 开启控制台并打印访问路径
         DirectProvider dp = new DevelopmentProvider();
@@ -83,18 +89,30 @@ public class WaterEdgeDetector {
 
         Topology wellTopology = dp.newTopology("WaterEdgeDetector");
 
-        TStream<JsonObject> well = waterDetector(wellTopology, "鲁台子");
+        TStream<JsonObject> well = waterDetector(wellTopology, "lutaizi");
+        TStream<JsonObject> well1 = waterDetector1(wellTopology, "runheji");
+        TStream<JsonObject> well2 = waterDetector2(wellTopology, "zhaopingtai");
 
         TStream<JsonObject> filteredReadings = alertFilter(well, false);
+        TStream<JsonObject> filteredReadings1 = alertFilter(well1, false);
+        TStream<JsonObject> filteredReadings2 = alertFilter(well2, false);
 
         List<TStream<JsonObject>> individualAlerts = splitAlert(filteredReadings);
+        List<TStream<JsonObject>> individualAlerts1 = splitAlert1(filteredReadings1);
+        List<TStream<JsonObject>> individualAlerts2 = splitAlert2(filteredReadings2);
 
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
         TStream<JsonObject> rainfallTStream = individualAlerts.get(2);
-        levelTStream.tag(LEVEL_ALERT_TAG, "鲁台子").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "鲁台子", "level")));
-        evaporationTStream.tag(EVAPORATION_ALERT_TAG, "鲁台子").sink(tuple -> System.out.println(formatAlertOutput(tuple, "鲁台子", "evaporation")));
-        rainfallTStream.tag(RAINFALL_ALERT_TAG, "鲁台子").sink(tuple -> System.out.println(formatAlertOutput(tuple, "鲁台子", "rainfall")));
+        levelTStream.tag(LEVEL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "lutaizi", "level")));
+        evaporationTStream.tag(EVAPORATION_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "evaporation")));
+        rainfallTStream.tag(RAINFALL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "rainfall")));
+
+        TStream<JsonObject> rainfallTStream1 = individualAlerts1.get(0);
+        rainfallTStream1.tag(RAINFALL_ALERT_TAG, "runheji").sink(tuple -> System.out.println(formatAlertOutput(tuple, "runheji", "rainfall")));
+
+        TStream<JsonObject> flowTStream = individualAlerts2.get(0);
+        flowTStream.tag(FLOW_ALERT_TAG, "zhaopingtai").sink(tuple -> System.out.println(formatAlertOutput(tuple, "zhaopingtai", "flow")));
 
         dp.submit(wellTopology);
 
@@ -112,13 +130,13 @@ public class WaterEdgeDetector {
         TStream<Map<String, Object>> level = topology.poll(() -> readData(levelDataList, levelIndexMap), 1, TimeUnit.SECONDS);
         TStream<Map<String, Object>> evaporation = topology.poll(() -> readData(evaporationDataList, evaporationIndexMap), 1, TimeUnit.SECONDS);
         TStream<Map<String, Object>> rainfall = topology.poll(() -> readData(rainfallDataList, rainfallIndexMap), 1, TimeUnit.SECONDS);
-        TStream<String> name = topology.poll(() -> wellName, 1, TimeUnit.SECONDS);
+        // TStream<String> name = topology.poll(() -> wellName, 1, TimeUnit.SECONDS);
 
         // 绑定标签
         level.tag("level", wellName);
         evaporation.tag("evaporation", wellName);
         rainfall.tag("rainfall", wellName);
-        name.tag(wellName);
+        // name.tag(wellName);
 
         TStream<JsonObject> levelObj = level.map(l -> {
             JsonObject jObj = new JsonObject();
@@ -138,20 +156,66 @@ public class WaterEdgeDetector {
             return jObj;
         });
 
-        TStream<JsonObject> nameObj = name.map(n -> {
+        /*TStream<JsonObject> nameObj = name.map(n -> {
             JsonObject jObj = new JsonObject();
             jObj.addProperty("name", n);
             return jObj;
-        });
+        });*/
 
         // ArrayAsList
         Set<TStream<JsonObject>> set = new HashSet<>();
         set.add(levelObj);
         set.add(evaporationObj);
         set.add(rainfallObj);
-        set.add(nameObj);
+        // set.add(nameObj);
 
         TStream<JsonObject> allReadings = levelObj.union(set);
+
+        return allReadings;
+    }
+
+    private static TStream<JsonObject> waterDetector1(Topology topology, String wellName) {
+        Map<String, Integer> rainfallIndexMap = new HashMap<>();
+        rainfallIndexMap.put("index", 0);
+        TStream<Map<String, Object>> rainfall = topology.poll(() -> readData(rainfallDataList1, rainfallIndexMap), 1, TimeUnit.SECONDS);
+
+        // 绑定标签
+        rainfall.tag("rainfall", wellName);
+
+        TStream<JsonObject> rainfallObj = rainfall.map(r -> {
+            JsonObject jObj = new JsonObject();
+            jObj.addProperty("rainfall", r.get("time") + "," + r.get("number"));
+            return jObj;
+        });
+
+        // ArrayAsList
+        Set<TStream<JsonObject>> set = new HashSet<>();
+        set.add(rainfallObj);
+
+        TStream<JsonObject> allReadings = rainfallObj.union(set);
+
+        return allReadings;
+    }
+
+    private static TStream<JsonObject> waterDetector2(Topology topology, String wellName) {
+        Map<String, Integer> flowIndexMap = new HashMap<>();
+        flowIndexMap.put("index", 0);
+        TStream<Map<String, Object>> flow = topology.poll(() -> readData(flowDataList, flowIndexMap), 1, TimeUnit.SECONDS);
+
+        // 绑定标签
+        flow.tag("flow", wellName);
+
+        TStream<JsonObject> flowObj = flow.map(r -> {
+            JsonObject jObj = new JsonObject();
+            jObj.addProperty("flow", r.get("time") + "," + r.get("number"));
+            return jObj;
+        });
+
+        // ArrayAsList
+        Set<TStream<JsonObject>> set = new HashSet<>();
+        set.add(flowObj);
+
+        TStream<JsonObject> allReadings = flowObj.union(set);
 
         return allReadings;
     }
@@ -169,16 +233,15 @@ public class WaterEdgeDetector {
                 return false;
             }
 
-            JsonElement tempElement = r.get("level");
-            if (tempElement != null) {
-                String level = tempElement.getAsString();
-                System.out.println("level : " + level);
-                boolean isOk = level != null && checkIsValid(level.split(",")[1]);
+            JsonElement levelElement = r.get("level");
+            if (levelElement != null) {
+                String level = levelElement.getAsString();
+                boolean isOk = level != null && checkIsValid(level.split(",", -1)[1]);
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?)");
-                        pstatement.setString(1, level.split(",")[0]);
-                        pstatement.setFloat(2, Float.parseFloat(level.split(",")[1]));
+                        pstatement.setString(1, level.split(",", -1)[0]);
+                        pstatement.setFloat(2, Float.parseFloat(level.split(",", -1)[1]));
                         pstatement.executeUpdate();
                         pstatement.close();
                     } catch (Exception e) {
@@ -188,35 +251,51 @@ public class WaterEdgeDetector {
                 return isOk;
             }
 
-            JsonElement acidElement = r.get("evaporation");
-            if (acidElement != null) {
-                String evaporation = acidElement.getAsString();
-                System.out.println("evaporation : " + evaporation);
-                boolean isOk = evaporation != null && checkIsValid(evaporation.split(",")[1]);
+            JsonElement evaporationElement = r.get("evaporation");
+            if (evaporationElement != null) {
+                String evaporation = evaporationElement.getAsString();
+                boolean isOk = evaporation != null && checkIsValid(evaporation.split(",", -1)[1]);
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?)");
-                        pstatement.setString(1, evaporation.split(",")[0]);
-                        pstatement.setFloat(2, Float.parseFloat(evaporation.split(",")[1]));
+                        pstatement.setString(1, evaporation.split(",", -1)[0]);
+                        pstatement.setFloat(2, Float.parseFloat(evaporation.split(",", -1)[1]));
                         pstatement.executeUpdate();
                         pstatement.close();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
                 }
+                return isOk;
+            }
+
+            JsonElement flowElement = r.get("flow");
+            if (flowElement != null) {
+                String flow = flowElement.getAsString();
+                boolean isOk = flow != null && checkIsValid(flow.split(",", -1)[1]);
+                /*if (isOk) {
+                    try {
+                        PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
+                        pstatement.setString(1, rainfall.split(",")[0]);
+                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",")[1]));
+                        pstatement.executeUpdate();
+                        pstatement.close();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }*/
                 return isOk;
             }
 
             JsonElement ecoliElement = r.get("rainfall");
             if (ecoliElement != null) {
                 String rainfall = ecoliElement.getAsString();
-                System.out.println("rainfall : " + rainfall);
-                boolean isOk = rainfall != null && checkIsValid(rainfall.split(",")[1]);
+                boolean isOk = rainfall != null && checkIsValid(rainfall.split(",", -1)[1]);
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
-                        pstatement.setString(1, rainfall.split(",")[0]);
-                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",")[1]));
+                        pstatement.setString(1, rainfall.split(",", -1)[0]);
+                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",", -1)[1]));
                         pstatement.executeUpdate();
                         pstatement.close();
                     } catch (Exception e) {
@@ -255,6 +334,32 @@ public class WaterEdgeDetector {
         return allStreams;
     }
 
+    private static List<TStream<JsonObject>> splitAlert1(TStream<JsonObject> alertStream) {
+
+        List<TStream<JsonObject>> allStreams = alertStream.split(2, tuple -> {
+            if (tuple.get("rainfall") != null) {
+                return 0;
+            } else {
+                return -1;
+            }
+        });
+
+        return allStreams;
+    }
+
+    private static List<TStream<JsonObject>> splitAlert2(TStream<JsonObject> alertStream) {
+
+        List<TStream<JsonObject>> allStreams = alertStream.split(2, tuple -> {
+            if (tuple.get("flow") != null) {
+                return 0;
+            } else {
+                return -1;
+            }
+        });
+
+        return allStreams;
+    }
+
     private static String formatAlertOutput(JsonObject alertObj, String wellName, String alertType) {
         return wellName + " alert, " + alertType + " value is " + alertObj.get(alertType).getAsString();
     }
@@ -267,20 +372,72 @@ public class WaterEdgeDetector {
         List<String> timeList;
         List<String> valueList;
         if ("level".equals(type)) {
-            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝ZQ.csv";
-            index = 2;
-            seperator = ",";
-        } else if ("evaporation".equals(type)) {
-            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝ZQ.csv";
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/ltz_zq.csv";
             index = 3;
             seperator = ",";
+        } else if ("evaporation".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/ltz_ev.csv";
+            index = 4;
+            seperator = ",";
         } else if ("rainfall".equals(type)) {
-            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/大河坝雨量.csv";
-            index = 2;
-            seperator = "\t";
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/ltz_rnfl.csv";
+            index = 3;
+            seperator = ",";
         }
 
-        timeList = Utils.readFile(filePath, seperator, 1, false);
+        timeList = Utils.readFile(filePath, seperator, 2, false);
+        valueList = Utils.readFile(filePath, seperator, index, false);
+
+        for (int i = 0; i < timeList.size(); i++) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("time", timeList.get(i));
+            map.put("number", valueList.get(i));
+            dataList.add(map);
+
+        }
+
+    }
+
+    private static void loadData1(List<Map<String, Object>> dataList, String type) {
+
+        String filePath = "";
+        String seperator = "\t";
+        int index = 0;
+        List<String> timeList;
+        List<String> valueList;
+        if ("rainfall".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/rhj_rnfl.csv";
+            index = 3;
+            seperator = ",";
+        }
+
+        timeList = Utils.readFile(filePath, seperator, 2, false);
+        valueList = Utils.readFile(filePath, seperator, index, false);
+
+        for (int i = 0; i < timeList.size(); i++) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("time", timeList.get(i));
+            map.put("number", valueList.get(i));
+            dataList.add(map);
+
+        }
+
+    }
+
+    private static void loadData2(List<Map<String, Object>> dataList, String type) {
+
+        String filePath = "";
+        String seperator = "\t";
+        int index = 0;
+        List<String> timeList;
+        List<String> valueList;
+        if ("flow".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/zptsk_rsvr.csv";
+            index = 7;
+            seperator = ",";
+        }
+
+        timeList = Utils.readFile(filePath, seperator, 2, false);
         valueList = Utils.readFile(filePath, seperator, index, false);
 
         for (int i = 0; i < timeList.size(); i++) {

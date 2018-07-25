@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -26,7 +27,7 @@ public class Utils {
                 }
                 String line = stringList.get(i);
                 if (line != null) {
-                    String[] lineArray = line.split(seperator);
+                    String[] lineArray = line.split(seperator, -1);
                     if (lineArray.length > index) {
                         resultList.add(lineArray[index]);
                     }
@@ -45,12 +46,15 @@ public class Utils {
     }
 
     public static String parseTimeToString(long milSec) {
-        return new SimpleDateFormat("yyyy/MM/dd K:mm a", Locale.US).format(milSec);
+        return new SimpleDateFormat("yyyy/MM/dd HH:mm").format(milSec);
     }
 
     public static void main(String[] args) {
-        System.out.println(Float.parseFloat("2.6"));
+        // System.out.println(Float.parseFloat("2.6"));
         // System.out.println(parseTimeToString(System.currentTimeMillis()));
+        System.out.println(Arrays.toString("1076,50603000,2018/6/13 6:00:00,167.420,,189.610,1,,2,,,".split(",", -1)));
+        // List<String> list = readFile("/Users/liujiayu/Desktop/老婆专属/小论文/data/zptsk_rsvr.csv", ",", 7, false);
+        // System.out.println(list.size());
     }
 
 
