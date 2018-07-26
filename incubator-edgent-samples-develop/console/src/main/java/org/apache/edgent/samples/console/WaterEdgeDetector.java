@@ -3,6 +3,7 @@ package org.apache.edgent.samples.console;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.apache.edgent.console.server.HttpServer;
+import org.apache.edgent.metrics.Metrics;
 import org.apache.edgent.providers.development.DevelopmentProvider;
 import org.apache.edgent.providers.direct.DirectProvider;
 import org.apache.edgent.topology.TStream;
@@ -42,6 +43,7 @@ public class WaterEdgeDetector {
     static String RAINFALL_ALERT_TAG = "rainfall is valid";
 
     static String FLOW_ALERT_TAG = "flow is valid";
+    static String FLOW_ALERT_TAG1 = "flow has been tramsformed by level";
 
     private static final Logger logger = LoggerFactory.getLogger(WaterEdgeDetector.class);
 
@@ -104,6 +106,8 @@ public class WaterEdgeDetector {
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
         TStream<JsonObject> rainfallTStream = individualAlerts.get(2);
+        TStream<JsonObject> testTStream = individualAlerts.get(3);
+        Metrics.rateMeter(individualAlerts.get(0));
         levelTStream.tag(LEVEL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "lutaizi", "level")));
         evaporationTStream.tag(EVAPORATION_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "evaporation")));
         rainfallTStream.tag(RAINFALL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "rainfall")));
@@ -141,6 +145,7 @@ public class WaterEdgeDetector {
         TStream<JsonObject> levelObj = level.map(l -> {
             JsonObject jObj = new JsonObject();
             jObj.addProperty("level", l.get("time") + "," + l.get("number"));
+            // jObj.addProperty("test", "test");
             return jObj;
         });
 
@@ -156,18 +161,11 @@ public class WaterEdgeDetector {
             return jObj;
         });
 
-        /*TStream<JsonObject> nameObj = name.map(n -> {
-            JsonObject jObj = new JsonObject();
-            jObj.addProperty("name", n);
-            return jObj;
-        });*/
-
         // ArrayAsList
         Set<TStream<JsonObject>> set = new HashSet<>();
         set.add(levelObj);
         set.add(evaporationObj);
         set.add(rainfallObj);
-        // set.add(nameObj);
 
         TStream<JsonObject> allReadings = levelObj.union(set);
 
