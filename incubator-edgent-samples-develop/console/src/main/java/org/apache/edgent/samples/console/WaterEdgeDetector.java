@@ -95,9 +95,9 @@ public class WaterEdgeDetector {
         TStream<JsonObject> well1 = waterDetector1(wellTopology, "runheji");
         TStream<JsonObject> well2 = waterDetector2(wellTopology, "zhaopingtai");
 
-        TStream<JsonObject> filteredReadings = alertFilter(well, false);
-        TStream<JsonObject> filteredReadings1 = alertFilter(well1, false);
-        TStream<JsonObject> filteredReadings2 = alertFilter(well2, false);
+        TStream<JsonObject> filteredReadings = alertFilter(well, false, "lutaizi");
+        TStream<JsonObject> filteredReadings1 = alertFilter(well1, false, "runheji");
+        TStream<JsonObject> filteredReadings2 = alertFilter(well2, false, "zhaopingtai");
 
         List<TStream<JsonObject>> individualAlerts = splitAlert(filteredReadings);
         List<TStream<JsonObject>> individualAlerts1 = splitAlert1(filteredReadings1);
@@ -106,7 +106,6 @@ public class WaterEdgeDetector {
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
         TStream<JsonObject> rainfallTStream = individualAlerts.get(2);
-        TStream<JsonObject> testTStream = individualAlerts.get(3);
         Metrics.rateMeter(individualAlerts.get(0));
         levelTStream.tag(LEVEL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "lutaizi", "level")));
         evaporationTStream.tag(EVAPORATION_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "evaporation")));
@@ -225,12 +224,13 @@ public class WaterEdgeDetector {
      * @param simulateNormal
      * @return false的属性会被丢弃
      */
-    private static TStream<JsonObject> alertFilter(TStream<JsonObject> readingsDetector, boolean simulateNormal) {
+    private static TStream<JsonObject> alertFilter(TStream<JsonObject> readingsDetector, boolean simulateNormal, String stationName) {
         readingsDetector = readingsDetector.filter(r -> {
             if (simulateNormal) {
                 return false;
             }
 
+            String property;
             JsonElement levelElement = r.get("level");
             if (levelElement != null) {
                 String level = levelElement.getAsString();
@@ -238,12 +238,21 @@ public class WaterEdgeDetector {
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?)");
-                        pstatement.setString(1, level.split(",", -1)[0]);
-                        pstatement.setFloat(2, Float.parseFloat(level.split(",", -1)[1]));
+                        String time = level.split(",", -1)[0];
+                        float value = Float.parseFloat(level.split(",", -1)[1]);
+                        pstatement.setString(1, time);
+                        pstatement.setFloat(2, value);
                         pstatement.executeUpdate();
                         pstatement.close();
+                        Map<String, String> param = new HashMap<>();
+                        param.put("stationName", stationName);
+                        param.put("property", "level");
+                        param.put("time", time.substring(11));
+                        param.put("value", String.valueOf(value));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
                     } catch (Exception e) {
                         e.printStackTrace();
+                        return false;
                     }
                 }
                 return isOk;
@@ -256,12 +265,21 @@ public class WaterEdgeDetector {
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?)");
-                        pstatement.setString(1, evaporation.split(",", -1)[0]);
-                        pstatement.setFloat(2, Float.parseFloat(evaporation.split(",", -1)[1]));
+                        String time = evaporation.split(",", -1)[0];
+                        float value = Float.parseFloat(evaporation.split(",", -1)[1]);
+                        pstatement.setString(1, time);
+                        pstatement.setFloat(2, value);
                         pstatement.executeUpdate();
                         pstatement.close();
+                        Map<String, String> param = new HashMap<>();
+                        param.put("stationName", stationName);
+                        param.put("property", "evaporation");
+                        param.put("time", time.substring(11));
+                        param.put("value", String.valueOf(value));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
                     } catch (Exception e) {
                         e.printStackTrace();
+                        return false;
                     }
                 }
                 return isOk;
@@ -292,12 +310,21 @@ public class WaterEdgeDetector {
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
-                        pstatement.setString(1, rainfall.split(",", -1)[0]);
-                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",", -1)[1]));
+                        String time = rainfall.split(",", -1)[0];
+                        float value = Float.parseFloat(rainfall.split(",", -1)[1]);
+                        pstatement.setString(1, time);
+                        pstatement.setFloat(2, value);
                         pstatement.executeUpdate();
                         pstatement.close();
+                        Map<String, String> param = new HashMap<>();
+                        param.put("stationName", stationName);
+                        param.put("property", "rainfall");
+                        param.put("time", time.substring(11));
+                        param.put("value", String.valueOf(value));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
                     } catch (Exception e) {
                         e.printStackTrace();
+                        return false;
                     }
                 }
                 return isOk;
