@@ -53,6 +53,8 @@ public class WaterEdgeDetector {
     static List<Map<String, Object>> rainfallDataList1 = new ArrayList<>();
     static List<Map<String, Object>> flowDataList = new ArrayList<>();
 
+    static Map<String, String> codeMap = new HashMap<>();
+
     static Connection con;
 
     //驱动程序名
@@ -64,6 +66,7 @@ public class WaterEdgeDetector {
     //MySQL配置时的密码
     static final String password = "LJY958769";
 
+    static final int isSwitchFlow = 1;
 
     static {
 
@@ -74,6 +77,10 @@ public class WaterEdgeDetector {
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        codeMap.put("lutaizi", "50103100");
+        codeMap.put("runheji", "50102350");
+        codeMap.put("zhaopingtai", "50603000");
 
     }
 
@@ -106,7 +113,9 @@ public class WaterEdgeDetector {
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
         TStream<JsonObject> rainfallTStream = individualAlerts.get(2);
-        Metrics.rateMeter(individualAlerts.get(0));
+        if(isSwitchFlow == 1){
+            Metrics.rateMeter(individualAlerts.get(0));
+        }
         levelTStream.tag(LEVEL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "lutaizi", "level")));
         evaporationTStream.tag(EVAPORATION_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "evaporation")));
         rainfallTStream.tag(RAINFALL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println(formatAlertOutput(tuple, "lutaizi", "rainfall")));
@@ -237,11 +246,12 @@ public class WaterEdgeDetector {
                 boolean isOk = level != null && checkIsValid(level.split(",", -1)[1]);
                 if (isOk) {
                     try {
-                        PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?)");
+                        PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?,?)");
                         String time = level.split(",", -1)[0];
                         float value = Float.parseFloat(level.split(",", -1)[1]);
                         pstatement.setString(1, time);
                         pstatement.setFloat(2, value);
+                        pstatement.setString(3, codeMap.get(stationName));
                         pstatement.executeUpdate();
                         pstatement.close();
                         Map<String, String> param = new HashMap<>();
@@ -264,11 +274,12 @@ public class WaterEdgeDetector {
                 boolean isOk = evaporation != null && checkIsValid(evaporation.split(",", -1)[1]);
                 if (isOk) {
                     try {
-                        PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?)");
+                        PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?,?)");
                         String time = evaporation.split(",", -1)[0];
                         float value = Float.parseFloat(evaporation.split(",", -1)[1]);
                         pstatement.setString(1, time);
                         pstatement.setFloat(2, value);
+                        pstatement.setString(3, codeMap.get(stationName));
                         pstatement.executeUpdate();
                         pstatement.close();
                         Map<String, String> param = new HashMap<>();
@@ -289,17 +300,26 @@ public class WaterEdgeDetector {
             if (flowElement != null) {
                 String flow = flowElement.getAsString();
                 boolean isOk = flow != null && checkIsValid(flow.split(",", -1)[1]);
-                /*if (isOk) {
+                if (isOk) {
                     try {
-                        PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
-                        pstatement.setString(1, rainfall.split(",")[0]);
-                        pstatement.setFloat(2, Float.parseFloat(rainfall.split(",")[1]));
+                        PreparedStatement pstatement = con.prepareStatement("insert into flow_data values(?,?,?)");
+                        String time = flow.split(",", -1)[0];
+                        float value = Float.parseFloat(flow.split(",", -1)[1]);
+                        pstatement.setString(1, time);
+                        pstatement.setFloat(2, value);
+                        pstatement.setString(3, codeMap.get(stationName));
                         pstatement.executeUpdate();
                         pstatement.close();
+                        Map<String, String> param = new HashMap<>();
+                        param.put("stationName", stationName);
+                        param.put("property", "flow");
+                        param.put("time", time.substring(11));
+                        param.put("value", String.valueOf(value));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                }*/
+                }
                 return isOk;
             }
 
@@ -309,11 +329,12 @@ public class WaterEdgeDetector {
                 boolean isOk = rainfall != null && checkIsValid(rainfall.split(",", -1)[1]);
                 if (isOk) {
                     try {
-                        PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?)");
+                        PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?,?)");
                         String time = rainfall.split(",", -1)[0];
                         float value = Float.parseFloat(rainfall.split(",", -1)[1]);
                         pstatement.setString(1, time);
                         pstatement.setFloat(2, value);
+                        pstatement.setString(3, codeMap.get(stationName));
                         pstatement.executeUpdate();
                         pstatement.close();
                         Map<String, String> param = new HashMap<>();
