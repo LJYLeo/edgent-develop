@@ -11,11 +11,7 @@ import org.apache.edgent.topology.Topology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.text.SimpleDateFormat;
+import java.sql.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -52,6 +48,7 @@ public class WaterEdgeDetector {
     static List<Map<String, Object>> rainfallDataList = new ArrayList<>();
     static List<Map<String, Object>> rainfallDataList1 = new ArrayList<>();
     static List<Map<String, Object>> flowDataList = new ArrayList<>();
+    static Map<Float, Float> zqMap = new HashMap<>();
 
     static Map<String, String> codeMap = new HashMap<>();
 
@@ -66,6 +63,7 @@ public class WaterEdgeDetector {
     //MySQL配置时的密码
     static final String password = "LJY958769";
 
+    // 关联规则转换开关
     static final int isSwitchFlow = 1;
 
     static {
@@ -91,6 +89,7 @@ public class WaterEdgeDetector {
         loadData(rainfallDataList, "rainfall");
         loadData1(rainfallDataList1, "rainfall");
         loadData2(flowDataList, "flow");
+        loadZqMap();
 
         // 开启控制台并打印访问路径
         DirectProvider dp = new DevelopmentProvider();
@@ -113,7 +112,7 @@ public class WaterEdgeDetector {
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
         TStream<JsonObject> rainfallTStream = individualAlerts.get(2);
-        if(isSwitchFlow == 1){
+        if (isSwitchFlow == 1) {
             Metrics.rateMeter(individualAlerts.get(0));
         }
         levelTStream.tag(LEVEL_ALERT_TAG, "lutaizi").sink(tuple -> System.out.println("\n" + formatAlertOutput(tuple, "lutaizi", "level")));
@@ -253,13 +252,28 @@ public class WaterEdgeDetector {
                         pstatement.setFloat(2, value);
                         pstatement.setString(3, codeMap.get(stationName));
                         pstatement.executeUpdate();
-                        pstatement.close();
                         Map<String, String> param = new HashMap<>();
                         param.put("stationName", stationName);
                         param.put("property", "level");
                         param.put("time", time.substring(11));
                         param.put("value", String.valueOf(value));
                         HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
+
+                        if (stationName.equals("lutaizi") && isSwitchFlow == 1) {
+                            float flowValue = zqMap.get(value);
+                            pstatement = con.prepareStatement("insert into flow_data values(?,?,?)");
+                            pstatement.setString(1, time);
+                            pstatement.setFloat(2, flowValue);
+                            pstatement.setString(3, codeMap.get(stationName));
+                            pstatement.executeUpdate();
+                            param.put("stationName", stationName);
+                            param.put("property", "flow");
+                            param.put("time", time.substring(11));
+                            param.put("value", String.valueOf(flowValue));
+                            HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
+                        }
+
+                        pstatement.close();
                     } catch (Exception e) {
                         e.printStackTrace();
                         return false;
@@ -492,6 +506,23 @@ public class WaterEdgeDetector {
             map.put("number", valueList.get(i));
             dataList.add(map);
 
+        }
+
+    }
+
+    private static void loadZqMap() {
+
+        try {
+            PreparedStatement pstatement = con.prepareStatement("select * from zqmap");
+            ResultSet rs = pstatement.executeQuery();
+            while (rs.next()) {
+                zqMap.put(rs.getFloat("level"), rs.getFloat("flow"));
+            }
+            rs.close();
+            pstatement.close();
+            System.out.println("load map success! size : " + zqMap.size());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
     }
