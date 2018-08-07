@@ -17,28 +17,30 @@ import java.util.concurrent.TimeUnit;
 
 public class WaterEdgeDetector {
 
-    static int LEVEL_ALERT_MAX = 100;
-    static int LEVEL_ALERT_MIN = 0;
+    static int LEVEL_ALERT_MAX = 30; //ltz: 10-30  z
+    static int LEVEL_ALERT_MIN = 10;
     static int LEVEL_RANDOM_HIGH = 150;
     static int LEVEL_RANDOM_LOW = -10;
     // static String LEVEL_ALERT_TAG = "level out of range";
     static String LEVEL_ALERT_TAG = "level is valid";
 
-    static int EVAPORATION_ALERT_MAX = 10;
+    static int EVAPORATION_ALERT_MAX = 10; //ltz: 0-10  dye
     static int EVAPORATION_ALERT_MIN = 0;
     static int EVAPORATION_RANDOM_HIGH = 15;
     static int EVAPORATION_RANDOM_LOW = -1;
     // static String EVAPORATION_ALERT_TAG = "evaporation out of range";
     static String EVAPORATION_ALERT_TAG = "evaporation is valid";
 
-    static int RAINFALL_ALERT_MAX = 500;
+    static int RAINFALL_ALERT_MAX = 100; //ltz:0-100  rhj:0-100  drp
     static int RAINFALL_ALERT_MIN = 0;
     static int RAINFALL_RANDOM_HIGH = 750;
     static int RAINFALL_RANDOM_LOW = -50;
     // static String RAINFALL_ALERT_TAG = "rainfall out of range";
     static String RAINFALL_ALERT_TAG = "rainfall is valid";
 
-    static String FLOW_ALERT_TAG = "flow is valid";
+    static int FLOW_ALERT_MAX = 200;
+    static int FLOW_ALERT_MIN = 0;
+    static String FLOW_ALERT_TAG = "flow is valid";  //zptsk: 0-200 otq
     static String FLOW_ALERT_TAG1 = "flow has been tramsformed by level";
 
     private static final Logger logger = LoggerFactory.getLogger(WaterEdgeDetector.class);
@@ -244,6 +246,10 @@ public class WaterEdgeDetector {
                 String level = levelElement.getAsString();
                 boolean isOk = level != null && checkIsValid(level.split(",", -1)[1]);
                 if (isOk) {
+                    float value = Float.parseFloat(level.split(",", -1)[1]);
+                    isOk = value >= LEVEL_ALERT_MIN && value <= LEVEL_ALERT_MAX;
+                }
+                if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into level_data values(?,?,?)");
                         String time = level.split(",", -1)[0];
@@ -287,6 +293,10 @@ public class WaterEdgeDetector {
                 String evaporation = evaporationElement.getAsString();
                 boolean isOk = evaporation != null && checkIsValid(evaporation.split(",", -1)[1]);
                 if (isOk) {
+                    float value = Float.parseFloat(evaporation.split(",", -1)[1]);
+                    isOk = value >= EVAPORATION_ALERT_MIN && value <= EVAPORATION_ALERT_MAX;
+                }
+                if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into evaporation_data values(?,?,?)");
                         String time = evaporation.split(",", -1)[0];
@@ -315,6 +325,10 @@ public class WaterEdgeDetector {
                 String flow = flowElement.getAsString();
                 boolean isOk = flow != null && checkIsValid(flow.split(",", -1)[1]);
                 if (isOk) {
+                    float value = Float.parseFloat(flow.split(",", -1)[1]);
+                    isOk = value >= FLOW_ALERT_MIN && value <= FLOW_ALERT_MAX;
+                }
+                if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into flow_data values(?,?,?)");
                         String time = flow.split(",", -1)[0];
@@ -341,6 +355,10 @@ public class WaterEdgeDetector {
             if (ecoliElement != null) {
                 String rainfall = ecoliElement.getAsString();
                 boolean isOk = rainfall != null && checkIsValid(rainfall.split(",", -1)[1]);
+                if (isOk) {
+                    float value = Float.parseFloat(rainfall.split(",", -1)[1]);
+                    isOk = value >= RAINFALL_ALERT_MIN && value <= RAINFALL_ALERT_MAX;
+                }
                 if (isOk) {
                     try {
                         PreparedStatement pstatement = con.prepareStatement("insert into rainfall_data values(?,?,?)");
