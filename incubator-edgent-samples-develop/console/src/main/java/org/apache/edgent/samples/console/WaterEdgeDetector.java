@@ -11,7 +11,10 @@ import org.apache.edgent.topology.Topology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -50,6 +53,7 @@ public class WaterEdgeDetector {
     static List<Map<String, Object>> rainfallDataList = new ArrayList<>();
     static List<Map<String, Object>> rainfallDataList1 = new ArrayList<>();
     static List<Map<String, Object>> flowDataList = new ArrayList<>();
+    static List<Map<String, Object>> levelDataList1 = new ArrayList<>();
     static Map<Float, Float> zqMap = new HashMap<>();
 
     static Map<String, String> codeMap = new HashMap<>();
@@ -81,6 +85,7 @@ public class WaterEdgeDetector {
         codeMap.put("lutaizi", "50103100");
         codeMap.put("runheji", "50102350");
         codeMap.put("zhaopingtai", "50603000");
+        codeMap.put("hongzehu", "00100000");
 
     }
 
@@ -91,6 +96,7 @@ public class WaterEdgeDetector {
         loadData(rainfallDataList, "rainfall");
         loadData1(rainfallDataList1, "rainfall");
         loadData2(flowDataList, "flow");
+        loadData3(levelDataList1, "level");
         loadZqMap();
 
         // 开启控制台并打印访问路径
@@ -102,14 +108,17 @@ public class WaterEdgeDetector {
         TStream<JsonObject> well = waterDetector(wellTopology, "lutaizi");
         TStream<JsonObject> well1 = waterDetector1(wellTopology, "runheji");
         TStream<JsonObject> well2 = waterDetector2(wellTopology, "zhaopingtai");
+        TStream<JsonObject> well3 = waterDetector3(wellTopology, "hongzehu");
 
         TStream<JsonObject> filteredReadings = alertFilter(well, false, "lutaizi");
         TStream<JsonObject> filteredReadings1 = alertFilter(well1, false, "runheji");
         TStream<JsonObject> filteredReadings2 = alertFilter(well2, false, "zhaopingtai");
+        TStream<JsonObject> filteredReadings3 = alertFilter(well3, false, "hongzehu");
 
         List<TStream<JsonObject>> individualAlerts = splitAlert(filteredReadings);
         List<TStream<JsonObject>> individualAlerts1 = splitAlert1(filteredReadings1);
         List<TStream<JsonObject>> individualAlerts2 = splitAlert2(filteredReadings2);
+        List<TStream<JsonObject>> individualAlerts3 = splitAlert3(filteredReadings3);
 
         TStream<JsonObject> levelTStream = individualAlerts.get(0);
         TStream<JsonObject> evaporationTStream = individualAlerts.get(1);
@@ -126,6 +135,9 @@ public class WaterEdgeDetector {
 
         TStream<JsonObject> flowTStream = individualAlerts2.get(0);
         flowTStream.tag(FLOW_ALERT_TAG, "zhaopingtai").sink(tuple -> System.out.println(formatAlertOutput(tuple, "zhaopingtai", "flow")));
+
+        TStream<JsonObject> levelTStream1 = individualAlerts3.get(0);
+        levelTStream1.tag(LEVEL_ALERT_TAG, "hongzehu").sink(tuple -> System.out.println(formatAlertOutput(tuple, "hongzehu", "level")));
 
         dp.submit(wellTopology);
 
@@ -227,6 +239,29 @@ public class WaterEdgeDetector {
         return allReadings;
     }
 
+    private static TStream<JsonObject> waterDetector3(Topology topology, String wellName) {
+        Map<String, Integer> levelIndexMap = new HashMap<>();
+        levelIndexMap.put("index", 0);
+        TStream<Map<String, Object>> level = topology.poll(() -> readData(levelDataList1, levelIndexMap), 1, TimeUnit.SECONDS);
+
+        // 绑定标签
+        level.tag("level", wellName);
+
+        TStream<JsonObject> levelObj = level.map(l -> {
+            JsonObject jObj = new JsonObject();
+            jObj.addProperty("level", l.get("time") + "," + l.get("number"));
+            return jObj;
+        });
+
+        // ArrayAsList
+        Set<TStream<JsonObject>> set = new HashSet<>();
+        set.add(levelObj);
+
+        TStream<JsonObject> allReadings = levelObj.union(set);
+
+        return allReadings;
+    }
+
     /**
      * 过滤规则
      *
@@ -265,6 +300,28 @@ public class WaterEdgeDetector {
                         param.put("value", String.valueOf(value));
                         HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
 
+                        // 计算面积
+                        float area = calArea(value);
+                        PreparedStatement pstatement1 = con.prepareStatement("insert into area_data values(?,?,?)");
+                        pstatement1.setString(1, time);
+                        pstatement1.setFloat(2, area);
+                        pstatement1.setString(3, codeMap.get(stationName));
+                        pstatement1.executeUpdate();
+                        param.put("property", "area");
+                        param.put("value", String.valueOf(area));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
+
+                        // 计算体积
+                        float volume = calVolume(value);
+                        PreparedStatement pstatement2 = con.prepareStatement("insert into volume_data values(?,?,?)");
+                        pstatement2.setString(1, time);
+                        pstatement2.setFloat(2, volume);
+                        pstatement2.setString(3, codeMap.get(stationName));
+                        pstatement2.executeUpdate();
+                        param.put("property", "volume");
+                        param.put("value", String.valueOf(volume));
+                        HttpClientUtil.sendHttpPost("http://localhost:8080/service/addData", param);
+
                         if (stationName.equals("lutaizi") && isSwitchFlow == 1) {
                             float flowValue = zqMap.get(value);
                             pstatement = con.prepareStatement("insert into flow_data values(?,?,?)");
@@ -280,6 +337,8 @@ public class WaterEdgeDetector {
                         }
 
                         pstatement.close();
+                        pstatement1.close();
+                        pstatement2.close();
                     } catch (Exception e) {
                         e.printStackTrace();
                         return false;
@@ -438,6 +497,19 @@ public class WaterEdgeDetector {
         return allStreams;
     }
 
+    private static List<TStream<JsonObject>> splitAlert3(TStream<JsonObject> alertStream) {
+
+        List<TStream<JsonObject>> allStreams = alertStream.split(2, tuple -> {
+            if (tuple.get("level") != null) {
+                return 0;
+            } else {
+                return -1;
+            }
+        });
+
+        return allStreams;
+    }
+
     private static String formatAlertOutput(JsonObject alertObj, String wellName, String alertType) {
         return wellName + " alert, " + alertType + " value is " + alertObj.get(alertType).getAsString();
     }
@@ -528,6 +600,32 @@ public class WaterEdgeDetector {
 
     }
 
+    private static void loadData3(List<Map<String, Object>> dataList, String type) {
+
+        String filePath = "";
+        String seperator = "\t";
+        int index = 0;
+        List<String> timeList;
+        List<String> valueList;
+        if ("level".equals(type)) {
+            filePath = "/Users/liujiayu/Desktop/老婆专属/小论文/data/蒋坝.csv";
+            index = 3;
+            seperator = ",";
+        }
+
+        timeList = Utils.readFile(filePath, seperator, 2, true);
+        valueList = Utils.readFile(filePath, seperator, index, true);
+
+        for (int i = 0; i < timeList.size(); i++) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("time", timeList.get(i));
+            map.put("number", valueList.get(i));
+            dataList.add(map);
+
+        }
+
+    }
+
     private static void loadZqMap() {
 
         try {
@@ -570,6 +668,14 @@ public class WaterEdgeDetector {
             return 0;
         });
         return resultMap.get("timestamp");
+    }
+
+    private static float calArea(double level) {
+        return (float) (38 * Math.pow(level, 3) - 1402 * Math.pow(level, 2) + 17560 * level - 72509);
+    }
+
+    private static float calVolume(double level) {
+        return (float) (0.0278 * Math.pow(level, 3) - 0.7533 * Math.pow(level, 2) + 20.58 * level - 166.1908);
     }
 
 }
